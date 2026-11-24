@@ -193,12 +193,12 @@ const mirrors=[];
   const tilt=new THREE.Group();tilt.position.set(0,-.46,-.62);tilt.rotation.x=-.9;cockpit.add(tilt);tilt.add(wheelSpin);
   const wm=L(0x111111);wheelSpin.add(new THREE.Mesh(new THREE.TorusGeometry(.2,.025,8,20),wm));
   add(0x111111,.4,.03,.03,0,0,0,wheelSpin);add(0x111111,.03,.2,.03,0,-.1,0,wheelSpin);add(0x222222,.1,.1,.05,0,0,0,wheelSpin);
-  // メーター
-  const gc=document.createElement('canvas');gc.width=gc.height=128;window.gctx=gc.getContext('2d');window.gtex=new THREE.CanvasTexture(gc);
-  const gp=new THREE.Mesh(new THREE.PlaneGeometry(.34,.34),new THREE.MeshBasicMaterial({map:gtex}));gp.position.set(0,-.33,-1);gp.rotation.x=-.6;cockpit.add(gp);
-  // 表示灯
-  [['left',.07,-.5,0x33ff66],['right',.07,.5,0x33ff66],['light',.07,-.3,0x44aaff],['doorF',.07,.3,0xffaa22],['doorM',.07,.4,0xffaa22]].forEach(([k,s,x,c])=>{
-    const m=new THREE.Mesh(B,new THREE.MeshBasicMaterial({color:0x222222}));m.scale.set(s,.02,s);m.position.set(x,-.345,-1.2);cockpit.add(m);lamps[k]={m,c}});
+  // ハイブリッドメーター（アナログ速度計＋デジタル表示＋インジケーター）。描画は drawMeter()
+  const gc=document.createElement('canvas');gc.width=512;gc.height=256;window.gctx=gc.getContext('2d');
+  window.gtex=new THREE.CanvasTexture(gc);gtex.minFilter=THREE.LinearFilter;gtex.generateMipmaps=false;
+  const mt=new THREE.Group();mt.position.set(0,-.25,-1.1);mt.rotation.x=-.9;cockpit.add(mt);
+  const bz=new THREE.Mesh(new THREE.PlaneGeometry(.6,.32),new THREE.MeshBasicMaterial({color:0x0b0d10}));bz.position.z=-.004;mt.add(bz);
+  mt.add(new THREE.Mesh(new THREE.PlaneGeometry(.56,.28),new THREE.MeshBasicMaterial({map:gtex})));
   // ワイパー
   [-.55,.15].forEach(x=>{const g=new THREE.Group();g.position.set(x,-.33,-1.3);const b=new THREE.Mesh(B,wm);b.scale.set(.8,.025,.03);b.position.x=.4;g.add(b);cockpit.add(g);wipers.push(g)});
   // サイドミラー（低頻度で後方を描画）
@@ -242,6 +242,45 @@ function stepBus(dt){
   if(hitAt(nx,nz,bus.yaw)){bus.yaw=py;bus.v*=-.3;if(Math.abs(bus.v)<.4)bus.v=0}else{bus.x=nx;bus.z=nz}
 }
 
+/* ===== ハイブリッドメーター描画（状態オブジェクト m を受け取る純粋な描画関数） ===== */
+const MC={bg:'#0b0d10',line:'#23282f',off:'#171b20',offTxt:'#4b5560',txt:'#eceff2',sub:'#9aa3ad',acc:'#ff6a2a',grn:'#3ddc84',blu:'#4aa8ff',amb:'#ffb020',red:'#ff3b30'};
+const MF='"Hiragino Sans","Hiragino Kaku Gothic ProN",Meiryo,sans-serif';
+function drawMeter(g,m){
+  const cx=170,cy=132,A0=.75*Math.PI,SW=1.5*Math.PI,ang=v=>A0+Math.min(Math.max(v,0),100)/100*SW;
+  g.fillStyle=MC.bg;g.fillRect(0,0,512,256);g.strokeStyle=MC.line;g.lineWidth=3;g.strokeRect(2,2,508,252);
+  // 速度弧（ベース＋現在速度）
+  g.lineCap='butt';g.lineWidth=10;g.strokeStyle='#1c2128';g.beginPath();g.arc(cx,cy,104,A0,A0+SW);g.stroke();
+  if(m.needle>.5){g.strokeStyle=MC.acc;g.beginPath();g.arc(cx,cy,104,A0,ang(m.needle));g.stroke()}
+  // 目盛り 0〜100km/h（5刻み、10刻みで長線、20刻みで数字）
+  g.textAlign='center';g.textBaseline='middle';
+  for(let v=0;v<=100;v+=5){const a=ang(v),c=Math.cos(a),s=Math.sin(a),maj=v%10===0,r1=maj?78:87;
+    g.lineWidth=maj?3:1.5;g.strokeStyle=MC.txt;g.beginPath();g.moveTo(cx+c*96,cy+s*96);g.lineTo(cx+c*r1,cy+s*r1);g.stroke();
+    if(v%20===0){g.fillStyle=MC.txt;g.font='bold 20px Arial,sans-serif';g.fillText(String(v),cx+c*62,cy+s*62)}}
+  // 針
+  const na=ang(m.needle),nc=Math.cos(na),ns=Math.sin(na);
+  g.lineCap='round';g.lineWidth=5;g.strokeStyle=MC.acc;g.beginPath();g.moveTo(cx-nc*14,cy-ns*14);g.lineTo(cx+nc*90,cy+ns*90);g.stroke();g.lineCap='butt';
+  g.fillStyle='#1c2128';g.strokeStyle=MC.acc;g.lineWidth=3;g.beginPath();g.arc(cx,cy,9,0,Math.PI*2);g.fill();g.stroke();
+  // デジタル速度（km/h・整数）
+  g.fillStyle=MC.txt;g.font='bold 50px Arial,sans-serif';g.fillText(String(m.kmh),cx,205);
+  g.fillStyle=MC.sub;g.font='bold 16px Arial,sans-serif';g.fillText('km/h',cx,235);
+  // 右パネル
+  g.strokeStyle=MC.line;g.lineWidth=2;g.beginPath();g.moveTo(302,16);g.lineTo(302,240);g.stroke();
+  // ギア D / N / R
+  ['D','N','R'].forEach((k,i)=>{const x=345+i*56,on=m.gear===k;
+    g.fillStyle=on?(k==='R'?MC.amb:MC.txt):'#3a414a';g.font='bold 44px Arial,sans-serif';g.fillText(k,x,50);
+    if(on){g.fillStyle=k==='R'?MC.amb:MC.grn;g.fillRect(x-18,76,36,4)}});
+  // ウインカー・ライト
+  const arrow=(x,d,on)=>{g.fillStyle=on?MC.grn:MC.off;g.beginPath();g.moveTo(x+d*22,125);g.lineTo(x+d*2,108);g.lineTo(x+d*2,118);g.lineTo(x-d*22,118);g.lineTo(x-d*22,132);g.lineTo(x+d*2,132);g.lineTo(x+d*2,142);g.closePath();g.fill()};
+  const tag=(x,y,w,t,on,col,tc)=>{g.fillStyle=on?col:MC.off;g.fillRect(x-w/2,y-18,w,36);g.fillStyle=on?(tc||'#000'):MC.offTxt;g.font='bold 18px '+MF;g.fillText(t,x,y+1)};
+  arrow(336,-1,m.left);arrow(466,1,m.right);tag(401,125,62,'ライト',m.light,MC.blu);
+  tag(352,178,84,'前扉',m.doorF,MC.amb);tag(450,178,84,'中扉',m.doorM,MC.amb);
+  // 警告（実条件のみ点灯）: ブレーキ＝走行中にブレーキ操作 / 注意＝走行中に扉が開いている
+  tag(352,225,84,'ブレーキ',m.brake,MC.red,'#fff');tag(450,225,84,'注意',m.warn,MC.red,'#fff');
+}
+const mst={needle:0,kmh:0,gear:'N',left:false,right:false,light:false,doorF:false,doorM:false,brake:false,warn:false};
+const mpv={needle:-1,kmh:-1,gear:'',left:null,right:null,light:null,doorF:null,doorM:null,brake:null,warn:null};
+let dispSpd=0;
+
 /* ===== 表示更新 ===== */
 let T=0,lastKmh=-1,gT=0;
 function updateVisuals(dt){
@@ -253,15 +292,17 @@ function updateVisuals(dt){
   camera.position.set(DRV.x,DRV.y+vib,DRV.z);camera.rotation.set(-.03+bus.pitch,0,bus.roll);
   wheelSpin.rotation.z=-bus.steer*2.2;
   const on=Math.floor(T*1.5)%2===0;
-  const set=(k,v)=>lamps[k].m.material.color.setHex(v?lamps[k].c:0x222222);
-  set('left',Sw.left&&on);set('right',Sw.right&&on);set('light',Sw.light);set('doorF',Sw.doorF);set('doorM',Sw.doorM);
   const wa=Sw.wiper?(Math.sin(T*5)+1)/2*1.3:0;wipers.forEach(w=>w.rotation.z=wa);
   const ph=Math.floor(T/12)%2;sigEW.color.setHex(ph?0xdd2222:0x22dd55);sigNS.color.setHex(ph?0x22dd55:0xdd2222);
   const kmh=Math.round(sp*3.6);
   if(kmh!==lastKmh){lastKmh=kmh;document.getElementById('spd').textContent=kmh;document.getElementById('gear').textContent=bus.v<-.1?'R':(sp<.1?'N':'D')}
-  if((gT+=dt)>.08){gT=0;const g=gctx;g.fillStyle='#0b0f14';g.fillRect(0,0,128,128);g.strokeStyle='#556';g.lineWidth=6;g.beginPath();g.arc(64,70,48,Math.PI*.8,Math.PI*2.2);g.stroke();
-    const a=Math.PI*.8+Math.min(sp*3.6/70,1)*Math.PI*1.4;g.strokeStyle='#ff6a3a';g.lineWidth=4;g.beginPath();g.moveTo(64,70);g.lineTo(64+Math.cos(a)*42,70+Math.sin(a)*42);g.stroke();
-    g.fillStyle='#fff';g.font='bold 26px sans-serif';g.textAlign='center';g.fillText(kmh,64,108);gtex.needsUpdate=true}
+  // メーター: 針は実速度(|v|)へ滑らかに追従、停止時は0へ戻る。変化があるときだけ再描画（最大約20Hz）
+  dispSpd+=(sp*3.6-dispSpd)*Math.min(1,dt*8);if(Math.abs(sp*3.6-dispSpd)<.05)dispSpd=sp*3.6;
+  mst.needle=Math.round(dispSpd*4)/4;mst.kmh=kmh;mst.gear=bus.v<-.1?'R':(sp<.1?'N':'D');
+  mst.left=!!Sw.left&&on;mst.right=!!Sw.right&&on;mst.light=!!Sw.light;mst.doorF=!!Sw.doorF;mst.doorM=!!Sw.doorM;
+  mst.brake=!!Controls.brake&&sp>.3;mst.warn=(!!Sw.doorF||!!Sw.doorM)&&sp>.8&&on;
+  if((gT+=dt)>.05){let ch=false;for(const k in mst)if(mst[k]!==mpv[k]){mpv[k]=mst[k];ch=true}
+    if(ch){gT=0;drawMeter(gctx,mst);gtex.needsUpdate=true}else gT=.05}
 }
 
 /* ===== メインループ ===== */
