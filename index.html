@@ -171,7 +171,10 @@ const busG=new THREE.Group();scene.add(busG);
 (function(){
   const add=(c,sx,sy,sz,x,y,z)=>{const m=new THREE.Mesh(B,L(c));m.scale.set(sx,sy,sz);m.position.set(x,y,z);busG.add(m)};
   add(0xf4f4f0,2.5,2.7,10.6,0,1.75,0);add(0x1f7a4d,2.52,.4,10.62,0,1.0,0);add(0x1f7a4d,2.52,.2,10.62,0,3.0,0);
-  add(0x1a2530,2.53,.95,9.4,0,2.3,-.2);add(0x1a2530,2.1,1.1,.04,0,2.25,-5.31);add(0xdddddd,1.4,.3,2.2,0,3.25,1);
+  add(0x1a2530,2.53,.95,9.4,0,2.3,-.2);add(0xdddddd,1.4,.3,2.2,0,3.25,1);
+  // フロントガラス: 外向き(-z)の半透明プレーン。室内側からは背面カリングで完全に透過し、外(ミラー等)からは暗いガラスに見える
+  const ws=new THREE.Mesh(new THREE.PlaneGeometry(2.1,1.1),new THREE.MeshBasicMaterial({color:0x1a2530,transparent:true,opacity:.55,depthWrite:false,side:THREE.FrontSide}));
+  ws.position.set(0,2.25,-5.31);ws.rotation.y=Math.PI;ws.renderOrder=1;busG.add(ws);
   const wg=new THREE.CylinderGeometry(.5,.5,.3,12),wm=L(0x111111);
   [[-1.15,-3.4],[1.15,-3.4],[-1.15,2.6],[1.15,2.6]].forEach(([x,z])=>{const w=new THREE.Mesh(wg,wm);w.rotation.z=Math.PI/2;w.position.set(x,.5,z);busG.add(w)});
   add(0x222222,.12,.5,.08,-1.45,2.1,-4.7);add(0x222222,.12,.5,.08,1.45,2.1,-4.7);
